@@ -206,6 +206,15 @@ impl<'sess> Channel<'sess> {
         }
     }
 
+    /// Return a Readable for the given stream id.
+    ///
+    /// The Readable implements std::io::Read and is used to read the
+    /// channel stream identified by `stream_id`. The SSH2 protocol
+    /// currently defines a stream ID of 1 to be the stderr substream.
+    pub fn readable<'a>(&'a mut self, stream_id: i32) -> Readable<'a,'sess> {
+        Readable { stream_id: stream_id, channel: self }
+    }
+
     /// Read from the stderr stream .
     pub fn read_stderr(&mut self, data: &mut [u8]) -> Result<usize, Error> {
         self.read_stream(::EXTENDED_DATA_STDERR, data)
@@ -419,6 +428,22 @@ impl<'sess> Write for Channel<'sess> {
 impl<'sess> Read for Channel<'sess> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.read_stream(0, buf).map_err(|e| {
+            io::Error::new(ErrorKind::Other, "ssh read error",
+                           Some(e.to_string()))
+        })
+    }
+}
+
+/// Readable is returned by Channel::readable, and implements
+/// std::io::Read.
+pub struct Readable<'a, 'sess : 'a> {
+    stream_id: i32,
+    channel: &'a mut Channel<'sess>,
+}
+
+impl<'a, 'sess> Read for Readable<'a, 'sess> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.channel.read_stream(self.stream_id, buf).map_err(|e| {
             io::Error::new(ErrorKind::Other, "ssh read error",
                            Some(e.to_string()))
         })
